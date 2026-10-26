@@ -7,6 +7,7 @@ name = "voqryn-monitoring"
 version = "0.1.0"
 description = "Voqryn domain monitoring core"
 requires-python = ">=3.12"
+dependencies = ["httpx>=0.27,<1"]
 
 [project.optional-dependencies]
 test = ["pytest>=8,<10"]

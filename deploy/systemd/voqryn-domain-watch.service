@@ -1,0 +1,24 @@
+[Unit]
+Description=Voqryn Domain Watch one-shot polling
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=voqryn
+Group=voqryn
+WorkingDirectory=/opt/voqryn/monitoring
+ExecStart=/opt/voqryn/monitoring/.venv/bin/python -m voqryn_monitoring.cli --db /var/lib/voqryn/domain-watch.sqlite --api-base http://127.0.0.1:8000 --limit 25
+StateDirectory=voqryn
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/voqryn
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+LockPersonality=true
+MemoryDenyWriteExecute=true
+
+[Install]
+WantedBy=multi-user.target

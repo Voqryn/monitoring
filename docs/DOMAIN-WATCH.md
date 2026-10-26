@@ -26,3 +26,18 @@ Status: initial code committed; tests not independently verified. No live schedu
 ## Next milestone M0.2
 
 SQLite-backed local prototype with schema migration, due-watch scheduler, deterministic fake RDAP adapter and outbox. Later migrate production storage to PostgreSQL and introduce real rate-limited RDAP adapter.
+
+## M0.2 SQLite prototype
+
+Implemented in `src/voqryn_monitoring/store.py`:
+- `connect(path)`: initialize local schema.
+- `add_watch(db, watch)`: register a watch.
+- `due_watches(db, now)`: bounded due-watch selection.
+- `record_observation(db, watch_id, observation)`: transactional observation, state update and outbox event.
+- `pending_events(db)`: read undelivered notification events without sending them.
+
+Tests are committed but CI execution has not been verified. This is a single-process prototype: there is no cross-worker lease/claim, notification sender, registry polling loop, account authorization or migration framework. Do not deploy as a production multi-worker service.
+
+### Known correctness work before live alerts
+
+The initial state machine counts consecutive differing observations but does not store the candidate status separately. Alternating `registered` and `possibly_available` observations could therefore satisfy the threshold incorrectly. Add a `pending_status` field and reset the counter whenever the candidate changes, with regression tests, before enabling live notifications.

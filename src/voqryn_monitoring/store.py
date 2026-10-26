@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS watches (
  id TEXT PRIMARY KEY, account_id TEXT NOT NULL, domain TEXT NOT NULL,
  status TEXT NOT NULL, consecutive_observations INTEGER NOT NULL DEFAULT 0,
  last_checked_at TEXT, next_check_at TEXT, enabled INTEGER NOT NULL DEFAULT 1,
+ pending_status TEXT,
  UNIQUE(account_id, domain)
 );
 CREATE TABLE IF NOT EXISTS observations (
@@ -31,6 +32,9 @@ def connect(path: str | Path) -> sqlite3.Connection:
     db.row_factory = sqlite3.Row
     db.execute("PRAGMA foreign_keys=ON")
     db.executescript(SCHEMA)
+    columns = {row[1] for row in db.execute('PRAGMA table_info(watches)')}
+    if 'pending_status' not in columns:
+        db.execute('ALTER TABLE watches ADD COLUMN pending_status TEXT')
     return db
 
 
@@ -47,13 +51,13 @@ def parse(value: str | None) -> datetime | None:
 
 
 def from_row(row: sqlite3.Row) -> DomainWatch:
-    return DomainWatch(row["id"], row["account_id"], row["domain"], RegistrationStatus(row["status"]), row["consecutive_observations"], parse(row["last_checked_at"]), parse(row["next_check_at"]), bool(row["enabled"]))
+    return DomainWatch(row["id"], row["account_id"], row["domain"], RegistrationStatus(row["status"]), row["consecutive_observations"], parse(row["last_checked_at"]), parse(row["next_check_at"]), bool(row["enabled"]), RegistrationStatus(row["pending_status"]) if row["pending_status"] else None)
 
 
 def add_watch(db: sqlite3.Connection, watch: DomainWatch) -> None:
     with db:
-        db.execute("INSERT INTO watches VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                   (watch.id, watch.account_id, watch.domain, watch.status.value, watch.consecutive_observations, stamp(watch.last_checked_at), stamp(watch.next_check_at), int(watch.enabled)))
+        db.execute("INSERT INTO watches(id,account_id,domain,status,consecutive_observations,last_checked_at,next_check_at,enabled,pending_status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                   (watch.id, watch.account_id, watch.domain, watch.status.value, watch.consecutive_observations, stamp(watch.last_checked_at), stamp(watch.next_check_at), int(watch.enabled), watch.pending_status.value if watch.pending_status else None))
 
 
 def due_watches(db: sqlite3.Connection, now: datetime, limit: int = 100) -> list[DomainWatch]:
@@ -72,8 +76,8 @@ def record_observation(db: sqlite3.Connection, watch_id: str, observation: Obser
         updated, event = apply_observation(from_row(row), observation)
         db.execute("INSERT INTO observations(watch_id,status,checked_at,source) VALUES(?,?,?,?)",
                    (watch_id, observation.status.value, stamp(observation.checked_at), observation.source))
-        db.execute("UPDATE watches SET status=?, consecutive_observations=?, last_checked_at=?, next_check_at=? WHERE id=?",
-                   (updated.status.value, updated.consecutive_observations, stamp(updated.last_checked_at), stamp(updated.next_check_at), watch_id))
+        db.execute("UPDATE watches SET status=?, consecutive_observations=?, last_checked_at=?, next_check_at=?, pending_status=? WHERE id=?",
+                   (updated.status.value, updated.consecutive_observations, stamp(updated.last_checked_at), stamp(updated.next_check_at), updated.pending_status.value if updated.pending_status else None, watch_id))
         if event:
             db.execute("INSERT INTO outbox(watch_id,kind,previous,current,observed_at) VALUES(?,?,?,?,?)",
                        (watch_id, event.kind, event.previous.value, event.current.value, stamp(event.observed_at)))

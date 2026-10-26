@@ -20,6 +20,7 @@ class DomainWatch:
     last_checked_at: datetime | None = None
     next_check_at: datetime | None = None
     enabled: bool = True
+    pending_status: RegistrationStatus | None = None
 
 
 @dataclass(frozen=True)
@@ -54,13 +55,13 @@ def apply_observation(watch: DomainWatch, observation: Observation, *, interval:
         raise ValueError("cannot check a disabled watch")
     next_at = observation.checked_at + interval
     if observation.status == RegistrationStatus.UNKNOWN:
-        return replace(watch, last_checked_at=observation.checked_at, next_check_at=next_at, consecutive_observations=0), None
+        return replace(watch, last_checked_at=observation.checked_at, next_check_at=next_at, consecutive_observations=0, pending_status=None), None
     if observation.status == watch.status:
         return replace(watch, last_checked_at=observation.checked_at, next_check_at=next_at, consecutive_observations=0), None
     # Only notify on a repeated change, not a single potentially transient response.
-    count = watch.consecutive_observations + 1 if watch.status != observation.status else 0
+    count = watch.consecutive_observations + 1 if watch.pending_status == observation.status else 1
     if count < confirmations:
-        return replace(watch, last_checked_at=observation.checked_at, next_check_at=next_at, consecutive_observations=count), None
-    updated = replace(watch, status=observation.status, consecutive_observations=0, last_checked_at=observation.checked_at, next_check_at=next_at)
+        return replace(watch, last_checked_at=observation.checked_at, next_check_at=next_at, consecutive_observations=count, pending_status=observation.status), None
+    updated = replace(watch, status=observation.status, consecutive_observations=0, pending_status=None, last_checked_at=observation.checked_at, next_check_at=next_at)
     event = WatchEvent(watch.id, "registration_status_changed", observation.checked_at, watch.status, observation.status)
     return updated, event
